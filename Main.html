@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>משחק הכיסאות - הרכיבו קואליציה</title>
+<style>
+  :root{
+    --bg:#0f1117;
+    --panel:#1a1d27;
+    --text:#f2f2f2;
+    --muted:#9aa0ac;
+    --accent:#3ddc84;
+    --danger:#e05263;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:"Segoe UI", Arial, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:18px;
+  }
+  h1{margin:0;font-size:1.5rem;text-align:center}
+  #status{
+    font-size:1.1rem;
+    font-weight:bold;
+    min-height:1.4em;
+    text-align:center;
+  }
+  #status.ok{color:var(--accent)}
+  #status.no{color:var(--muted)}
+
+  #chart-wrap{width:100%;max-width:640px}
+  svg{width:100%;height:auto;display:block}
+  .seat{stroke:#000;stroke-width:0.5;transition:fill .2s}
+
+  #progress-bar{
+    width:100%;
+    max-width:640px;
+    height:14px;
+    background:#2a2e3a;
+    border-radius:8px;
+    overflow:hidden;
+  }
+  #progress-fill{
+    height:100%;
+    width:0%;
+    background:var(--accent);
+    transition:width .3s;
+  }
+
+  #parties{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    justify-content:center;
+    max-width:680px;
+  }
+  .party-card{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    padding:8px 10px;
+    border-radius:10px;
+    background:var(--panel);
+    border:2px solid transparent;
+    cursor:pointer;
+    user-select:none;
+    transition:border-color .15s, transform .1s;
+    flex:0 0 auto;
+    font-size:.9rem;
+  }
+  .party-card:active{transform:scale(0.97)}
+  .party-card.selected{border-color:var(--accent)}
+  .dot{width:16px;height:16px;border-radius:50%;flex-shrink:0}
+  .party-name{font-weight:600}
+  .party-seats{color:var(--muted);font-size:.9rem}
+
+  #actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  button{
+    font-family:inherit;
+    font-size:1rem;
+    padding:10px 20px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+    background:var(--accent);
+    color:#06210f;
+    font-weight:bold;
+  }
+  button.secondary{
+    background:transparent;
+    color:var(--text);
+    border:1px solid var(--muted);
+    font-weight:normal;
+  }
+  button:disabled{opacity:.4;cursor:not-allowed}
+
+  #overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.65);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:50;
+    padding:20px;
+  }
+  #overlay.show{display:flex}
+  #conflict-box{
+    background:#e8dcc0;
+    background-image:
+      radial-gradient(rgba(0,0,0,.05) 1px, transparent 1px);
+    background-size:6px 6px;
+    border:6px solid #3a2e1a;
+    border-radius:6px;
+    padding:26px 22px;
+    max-width:340px;
+    width:100%;
+    text-align:center;
+    transform:rotate(-2deg);
+    box-shadow:0 10px 25px rgba(0,0,0,.5);
+    font-family:"Comic Sans MS","Marker Felt", cursive, sans-serif;
+    position:relative;
+  }
+  #conflict-box::before{
+    content:"";
+    position:absolute;
+    top:-34px;
+    left:50%;
+    transform:translateX(-50%);
+    width:10px;
+    height:38px;
+    background:#6b4a25;
+    border-radius:3px;
+  }
+  #conflict-box .cf-title{
+    font-size:1.25rem;
+    font-weight:bold;
+    color:#1a1a1a;
+    margin-bottom:10px;
+    line-height:1.4;
+    transform:rotate(1deg);
+  }
+  #conflict-box .cf-sub{
+    color:#333;
+    font-size:1.1rem;
+    margin-bottom:22px;
+    transform:rotate(-1deg);
+  }
+  #conflict-box .cf-actions{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+  }
+  #conflict-box button{
+    font-family:inherit;
+    font-weight:bold;
+    border-radius:8px;
+    border:3px solid #1a1a1a;
+  }
+  #conflict-box button.danger{
+    background:var(--danger);
+    color:#fff;
+  }
+  #conflict-box button.go{
+    background:var(--accent);
+    color:#06210f;
+  }
+</style>
+</head>
+<body>
+
+<h1>🪑 משחק הכיסאות</h1>
+<p style="color:var(--muted);text-align:center;max-width:500px;margin:0">
+  בחרו מפלגות והרכיבו קואליציה. צריך לפחות 61 מנדטים כדי לנצח.
+</p>
+
+<div id="chart-wrap"><svg id="chart" viewBox="0 0 600 320"></svg></div>
+
+<div id="progress-bar"><div id="progress-fill"></div></div>
+<div id="status" class="no">0 / 120 מנדטים (חסרים 61 להרכבת קואליציה)</div>
+
+<div id="parties"></div>
+
+<div id="actions">
+  <button id="shareBtn" disabled>שתפו את הקואליציה שלכם 🔗</button>
+  <button id="resetBtn" class="secondary">איפוס</button>
+</div>
+
+<div id="overlay">
+  <div id="conflict-box">
+    <div class="cf-title" id="cf-title"></div>
+    <div class="cf-sub" id="cf-sub"></div>
+    <div class="cf-actions">
+      <button id="cf-cancel" class="danger">לא מוותרים</button>
+      <button id="cf-waive" class="go">יאללה מוותרים</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- נתוני המפלגות ----------
+   ערכו כאן חופשי: שם, מספר מנדטים וצבע. סה"כ המנדטים צריך להסתכם ל-120.
+------------------------------------- */
+const parties = [
+  { name: "איזנקוט",        seats: 23, color: "#4C72B0", redlines: ["איזנקוט ראש ממשלה"],        tags: [] },
+  { name: "הליכוד",         seats: 20, color: "#F2B134", redlines: ["רק ביבי"],                    tags: [] },
+  { name: "בנט&לפיד",       seats: 13, color: "#55A868", redlines: ["בנט ראש ממשלה"],             tags: [] },
+  { name: "גולן",           seats: 8,  color: "#C44E52", redlines: ["רק לא שטחים", "רק לא ביבי"], tags: [] },
+  { name: "חרדים אשכנז",    seats: 8,  color: "#000000", redlines: ["רק לא גיוס"],                tags: [] },
+  { name: "חרדים מזרח",     seats: 7,  color: "#4A4A4A", redlines: ["רק לא גיוס"],                tags: [] },
+  { name: "ליברמן",         seats: 7,  color: "#3399CC", redlines: ["גיוס חרדים", "רק לא ביבי"],  tags: [] },
+  { name: "בן גביר",        seats: 7,  color: "#8B0000", redlines: ["רק לא ערבים", "רק ביבי"],    tags: ["is_bengvir"] },
+  { name: "ערבים",          seats: 7,  color: "#2E8B57", redlines: ["רק לא ימין"],                tags: ["is_arab"] },
+  { name: "סמוטריץ'",       seats: 6,  color: "#DA8BC3", redlines: ["רק שטחים", "רק ביבי"],       tags: [] },
+  { name: "רע\"מ",          seats: 6,  color: "#006633", redlines: ["רק לא בן גביר"],             tags: ["is_arab"] },
+  { name: "וינטר",          seats: 4,  color: "#937860", redlines: ["גיוס חרדים"],                tags: [] },
+  { name: "הנדל&זליכה",     seats: 4,  color: "#8172B2", redlines: [],                             tags: [] },
+];
+
+/* ---------- טבלת סתירות בין קווים אדומים ----------
+   כל כלל מגדיר שני "צדדים" סותרים. צד יכול להיות טקסט של קו אדום (type:'text')
+   או תגית זהות (type:'tag'). מפלגה "מחזיקה" בצד אם יש לה את הטקסט הזה ברשימת
+   redlines שלה, או את התגית הזו ברשימת tags שלה.
+------------------------------------------------------ */
+const RULES = [
+  { a:{type:'text', value:'איזנקוט ראש ממשלה'}, b:{type:'text', value:'רק ביבי'} },
+  { a:{type:'text', value:'איזנקוט ראש ממשלה'}, b:{type:'text', value:'בנט ראש ממשלה'} },
+  { a:{type:'text', value:'רק ביבי'},           b:{type:'text', value:'בנט ראש ממשלה'} },
+  { a:{type:'text', value:'רק ביבי'},           b:{type:'text', value:'רק לא ביבי'} },
+  { a:{type:'text', value:'רק ביבי'},           b:{type:'text', value:'רק לא ימין'} },
+  { a:{type:'text', value:'רק לא שטחים'},       b:{type:'text', value:'רק שטחים'} },
+  { a:{type:'text', value:'רק לא גיוס'},        b:{type:'text', value:'גיוס חרדים'} },
+  { a:{type:'text', value:'רק לא ערבים'},       b:{type:'tag',  value:'is_arab'} },
+  { a:{type:'text', value:'רק לא בן גביר'},     b:{type:'tag',  value:'is_bengvir'} },
+];
+
+function holds(party, side) {
+  return side.type === 'text'
+    ? party.redlines.includes(side.value)
+    : party.tags.includes(side.value);
+}
+
+const TOTAL_SEATS = 120;
+const MAJORITY = 61;
+let coalitionOrder = [];           // סדר ההוספה של אינדקסי מפלגות שנבחרו
+const waivers = new Set();         // מפתחות "partyIdx::ruleIdx" של קווים אדומים שהמפלגה עצמה ויתרה עליהם
+let pendingAdd = null;             // מצב תהליך ההוספה הפעיל (אם יש התנגשות פתוחה)
+
+/* ---------- בניית מערך של כל כיסא בודד, משויך למפלגה ---------- */
+function buildSeatList() {
+  const seatList = [];
+  parties.forEach((p, pIndex) => {
+    for (let i = 0; i < p.seats; i++) seatList.push(pIndex);
+  });
+  return seatList;
+}
+
+/* ---------- פריסת חצי-גורן (חצי מעגל) לכיסאות ---------- */
+function layoutSeats(count) {
+  // מחלקים לשורות עם רדיוסים גדלים; כל שורה מקבלת יותר כיסאות
+  const rows = [];
+  let remaining = count;
+  let rowCount = Math.ceil(Math.sqrt(count / 1.6));
+  let baseRow = Math.floor(count / (rowCount * (rowCount + 1) / 2));
+  for (let r = 1; r <= rowCount; r++) {
+    let n = Math.round(baseRow * r * 1.15);
+    rows.push(n);
+  }
+  // תיקון סכום לשווה בדיוק ל-count
+  let sum = rows.reduce((a,b)=>a+b,0);
+  let diff = count - sum;
+  rows[rows.length-1] += diff;
+
+  const cx = 300, cyBase = 300;
+  const rMin = 70, rMax = 260;
+  const positions = [];
+  rows.forEach((n, rIdx) => {
+    const radius = rMin + (rMax - rMin) * (rIdx / (rows.length - 1 || 1));
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const angle = Math.PI - t * Math.PI; // 180° -> 0°
+      const x = cx + radius * Math.cos(angle);
+      const y = cyBase - radius * Math.sin(angle) * 0.95;
+      positions.push({ x, y });
+    }
+  });
+  return positions;
+}
+
+const seatList = buildSeatList();
+const positions = layoutSeats(seatList.length);
+
+const svg = document.getElementById('chart');
+svg.setAttribute('viewBox', '0 0 600 320');
+
+function renderSeats() {
+  svg.innerHTML = '';
+  positions.forEach((pos, i) => {
+    const partyIndex = seatList[i];
+    const party = parties[partyIndex];
+    const isActive = coalitionOrder.includes(partyIndex);
+    const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circle.setAttribute('cx', pos.x);
+    circle.setAttribute('cy', pos.y);
+    circle.setAttribute('r', 6.2);
+    circle.setAttribute('class','seat');
+    circle.setAttribute('fill', isActive ? party.color : '#2a2e3a');
+    svg.appendChild(circle);
+  });
+}
+
+function renderPartyList() {
+  const wrap = document.getElementById('parties');
+  wrap.innerHTML = '';
+  parties.forEach((p, idx) => {
+    const card = document.createElement('div');
+    card.className = 'party-card' + (coalitionOrder.includes(idx) ? ' selected' : '');
+    card.innerHTML = `
+      <span class="dot" style="background:${p.color}"></span>
+      <span class="party-name">${p.name}</span>
+      <span class="party-seats">${p.seats}</span>
+    `;
+    card.onclick = () => {
+      if (pendingAdd) return; // תהליך ויתור על קו אדום כבר פעיל
+      if (coalitionOrder.includes(idx)) {
+        removeParty(idx);
+      } else {
+        attemptAdd(idx);
+      }
+    };
+    wrap.appendChild(card);
+  });
+}
+
+function currentTotal() {
+  let total = 0;
+  coalitionOrder.forEach(idx => total += parties[idx].seats);
+  return total;
+}
+
+/* ---------- הסרת מפלגה מהקואליציה ---------- */
+function removeParty(idx) {
+  coalitionOrder = coalitionOrder.filter(i => i !== idx);
+  // הקווים האדומים ש"היא" ויתרה עליהם חוזרים לתוקף
+  [...waivers].forEach(key => {
+    if (key.startsWith(idx + '::')) waivers.delete(key);
+  });
+  update();
+}
+
+/* ---------- ניסיון הוספת מפלגה, כולל בדיקת קווים אדומים ---------- */
+function attemptAdd(idx) {
+  const party = parties[idx];
+  const facts = [
+    ...party.redlines.map(v => ({ type: 'text', value: v })),
+    ...party.tags.map(v => ({ type: 'tag', value: v })),
+  ];
+  pendingAdd = { idx, facts, factIndex: 0, tempWaivers: [] };
+  processNextConflict();
+}
+
+function findConflict(fact) {
+  for (let ruleIdx = 0; ruleIdx < RULES.length; ruleIdx++) {
+    const rule = RULES[ruleIdx];
+    let otherSide = null;
+    if (rule.a.type === fact.type && rule.a.value === fact.value) otherSide = rule.b;
+    else if (rule.b.type === fact.type && rule.b.value === fact.value) otherSide = rule.a;
+    if (!otherSide) continue;
+
+    const waiverKey = `${pendingAdd.idx}::${ruleIdx}`;
+    if (waivers.has(waiverKey)) continue;
+
+    const opponentIdx = coalitionOrder.find(mIdx => holds(parties[mIdx], otherSide));
+    if (opponentIdx !== undefined) {
+      return { ruleIdx, waiverKey, opponentIdx };
+    }
+  }
+  return null;
+}
+
+function processNextConflict() {
+  while (pendingAdd.factIndex < pendingAdd.facts.length) {
+    const fact = pendingAdd.facts[pendingAdd.factIndex];
+    const conflict = findConflict(fact);
+    if (!conflict) {
+      pendingAdd.factIndex++;
+      continue;
+    }
+    showConflictModal(fact, conflict);
+    return; // ממתינים לתגובת המשתמש
+  }
+  // אין יותר התנגשויות פתוחות - מוסיפים בפועל
+  coalitionOrder.push(pendingAdd.idx);
+  pendingAdd = null;
+  update();
+}
+
+function showConflictModal(fact, conflict) {
+  const party = parties[pendingAdd.idx];
+  const opponentName = parties[conflict.opponentIdx].name;
+  document.getElementById('cf-title').textContent = `אבל ${party.name} הבטיחה ש${fact.value}`;
+  document.getElementById('cf-sub').textContent = `מוכנים לוותר ל${opponentName}?`;
+  document.getElementById('overlay').classList.add('show');
+
+  document.getElementById('cf-waive').onclick = () => {
+    waivers.add(conflict.waiverKey);
+    pendingAdd.tempWaivers.push(conflict.waiverKey);
+    pendingAdd.factIndex++;
+    document.getElementById('overlay').classList.remove('show');
+    processNextConflict();
+  };
+  document.getElementById('cf-cancel').onclick = () => {
+    pendingAdd.tempWaivers.forEach(k => waivers.delete(k));
+    pendingAdd = null;
+    document.getElementById('overlay').classList.remove('show');
+    update();
+  };
+}
+
+function update() {
+  renderSeats();
+  renderPartyList();
+  const total = currentTotal();
+  const pct = Math.min(100, (total / TOTAL_SEATS) * 100);
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  const statusEl = document.getElementById('status');
+  const shareBtn = document.getElementById('shareBtn');
+  if (total >= MAJORITY) {
+    statusEl.textContent = `🎉 יש לכם קואליציה! ${total} / 120 מנדטים`;
+    statusEl.className = 'ok';
+    shareBtn.disabled = false;
+  } else {
+    statusEl.textContent = `${total} / 120 מנדטים (חסרים ${MAJORITY - total} להרכבת קואליציה)`;
+    statusEl.className = 'no';
+    shareBtn.disabled = true;
+  }
+}
+
+document.getElementById('resetBtn').onclick = () => {
+  coalitionOrder = [];
+  waivers.clear();
+  pendingAdd = null;
+  document.getElementById('overlay').classList.remove('show');
+  update();
+};
+
+document.getElementById('shareBtn').onclick = async () => {
+  const names = coalitionOrder.map(idx => parties[idx].name).join(', ');
+  const total = currentTotal();
+  const text = `הרכבתי קואליציה עם ${total} מנדטים: ${names} 🪑`;
+  if (navigator.share) {
+    try { await navigator.share({ text }); } catch(e) {}
+  } else {
+    await navigator.clipboard.writeText(text);
+    alert('הטקסט הועתק ללוח! ' + text);
+  }
+};
+
+update();
+</script>
+</body>
+</html>
