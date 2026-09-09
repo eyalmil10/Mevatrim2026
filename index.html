@@ -172,6 +172,68 @@
     background:var(--accent);
     color:#06210f;
   }
+
+  .angel-pop{
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    z-index:100;
+    pointer-events:none;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    animation:angelPop 3.4s ease forwards;
+  }
+  .angel-pop svg{
+    width:150px;
+    height:150px;
+    display:block;
+    filter:drop-shadow(0 8px 14px rgba(0,0,0,.5));
+  }
+  .angel-bubble{
+    background:#fff;
+    color:#111;
+    border:3px solid #000;
+    border-radius:14px;
+    padding:8px 16px;
+    font-family:"Comic Sans MS", cursive, sans-serif;
+    font-weight:bold;
+    font-size:1rem;
+    max-width:230px;
+    text-align:center;
+    margin-bottom:10px;
+    position:relative;
+    unicode-bidi:plaintext;
+  }
+  .angel-bubble::after{
+    content:"";
+    position:absolute;
+    bottom:-14px;
+    left:50%;
+    transform:translateX(-50%);
+    border-width:14px 10px 0 10px;
+    border-style:solid;
+    border-color:#000 transparent transparent transparent;
+  }
+  .angel-bubble::before{
+    content:"";
+    position:absolute;
+    bottom:-9px;
+    left:50%;
+    transform:translateX(-50%);
+    border-width:11px 7px 0 7px;
+    border-style:solid;
+    border-color:#fff transparent transparent transparent;
+    z-index:1;
+  }
+  @keyframes angelPop{
+    0%   { opacity:0; transform:translate(-50%,-50%) scale(0.4) rotate(-8deg); }
+    12%  { opacity:1; transform:translate(-50%,-50%) scale(1.15) rotate(4deg); }
+    20%  { transform:translate(-50%,-50%) scale(1) rotate(0deg); }
+    85%  { opacity:1; }
+    100% { opacity:0; transform:translate(-50%,-50%) scale(0.9) rotate(0deg); }
+  }
 </style>
 </head>
 <body>
@@ -211,7 +273,7 @@
 const parties = [
   { name: "איזנקוט",        seats: 23, color: "#4C72B0", redlines: ["איזנקוט ראש ממשלה"],        tags: [] },
   { name: "הליכוד",         seats: 20, color: "#F2B134", redlines: ["רק ביבי"],                    tags: [] },
-  { name: "בנט&לפיד",       seats: 13, color: "#55A868", redlines: ["בנט ראש ממשלה"],             tags: [] },
+  { name: "בנט&לפיד",       seats: 13, color: "#55A868", redlines: ["רק לא ערבים", "רק לא ביבי"], tags: [] },
   { name: "גולן",           seats: 8,  color: "#C44E52", redlines: ["רק לא שטחים", "רק לא ביבי"], tags: [] },
   { name: "חרדים אשכנז",    seats: 8,  color: "#000000", redlines: ["רק לא גיוס"],                tags: [] },
   { name: "חרדים מזרח",     seats: 7,  color: "#4A4A4A", redlines: ["רק לא גיוס"],                tags: [] },
@@ -220,8 +282,8 @@ const parties = [
   { name: "ערבים",          seats: 7,  color: "#2E8B57", redlines: ["רק לא ימין"],                tags: ["is_arab"] },
   { name: "סמוטריץ'",       seats: 6,  color: "#DA8BC3", redlines: ["רק שטחים", "רק ביבי"],       tags: [] },
   { name: "רע\"מ",          seats: 6,  color: "#006633", redlines: ["רק לא בן גביר"],             tags: ["is_arab"] },
-  { name: "וינטר",          seats: 4,  color: "#937860", redlines: ["גיוס חרדים"],                tags: [] },
-  { name: "הנדל&זליכה",     seats: 4,  color: "#8172B2", redlines: [],                             tags: [] },
+  { name: "וינטר",          seats: 4,  color: "#937860", redlines: ["גיוס חרדים", "רק ביבי"],     tags: [] },
+  { name: "הנדל&זליכה",     seats: 4,  color: "#8172B2", redlines: ["רק לא ביבי"],                tags: [] },
 ];
 
 /* ---------- טבלת סתירות בין קווים אדומים ----------
@@ -357,69 +419,143 @@ function removeParty(idx) {
 
 /* ---------- ניסיון הוספת מפלגה, כולל בדיקת קווים אדומים ---------- */
 function attemptAdd(idx) {
-  const party = parties[idx];
-  const facts = [
-    ...party.redlines.map(v => ({ type: 'text', value: v })),
-    ...party.tags.map(v => ({ type: 'tag', value: v })),
-  ];
-  pendingAdd = { idx, facts, factIndex: 0, tempWaivers: [] };
+  pendingAdd = { idx, tempWaivers: [] };
   processNextConflict();
 }
 
-function findConflict(fact) {
-  for (let ruleIdx = 0; ruleIdx < RULES.length; ruleIdx++) {
-    const rule = RULES[ruleIdx];
-    let otherSide = null;
-    if (rule.a.type === fact.type && rule.a.value === fact.value) otherSide = rule.b;
-    else if (rule.b.type === fact.type && rule.b.value === fact.value) otherSide = rule.a;
-    if (!otherSide) continue;
+// כל ההתנגשויות הפתוחות של idx מול מי שכבר בקואליציה, ממוינות
+// לפי סדר ההצטרפות של הצד היריב - מי שנכנס קודם נבדק קודם.
+// רק הקווים האדומים המוצהרים של idx עצמו (לא תגיות זהות פנימיות) יכולים
+// ליזום שאלה - המפלגה החדשה היא תמיד זו ש"מתבקשת לוותר".
+function getPendingConflicts(idx) {
+  const party = parties[idx];
+  const myTexts = [...new Set(party.redlines)];
+  const conflicts = [];
 
-    const waiverKey = `${pendingAdd.idx}::${ruleIdx}`;
-    if (waivers.has(waiverKey)) continue;
+  myTexts.forEach(text => {
+    const waiverKey = `${idx}::${text}`;
+    if (waivers.has(waiverKey)) return;
 
-    const opponentIdx = coalitionOrder.find(mIdx => holds(parties[mIdx], otherSide));
-    if (opponentIdx !== undefined) {
-      return { ruleIdx, waiverKey, opponentIdx };
-    }
-  }
-  return null;
+    // כל הצדדים שסותרים את הטקסט הזה, מכל כלל שבו הוא מופיע
+    const otherSides = [];
+    RULES.forEach(rule => {
+      if (rule.a.type === 'text' && rule.a.value === text) otherSides.push(rule.b);
+      else if (rule.b.type === 'text' && rule.b.value === text) otherSides.push(rule.a);
+    });
+    if (otherSides.length === 0) return;
+
+    // המפלגה שכבר בקואליציה ומחזיקה באחד הצדדים הסותרים, שנכנסה הכי מוקדם
+    let bestOpponent, bestJoinOrder = Infinity;
+    coalitionOrder.forEach((mIdx, order) => {
+      if (order < bestJoinOrder && otherSides.some(side => holds(parties[mIdx], side))) {
+        bestOpponent = mIdx;
+        bestJoinOrder = order;
+      }
+    });
+    if (bestOpponent === undefined) return;
+
+    conflicts.push({ waiverKey, opponentIdx: bestOpponent, promiseText: text, joinOrder: bestJoinOrder });
+  });
+
+  conflicts.sort((a, b) => a.joinOrder - b.joinOrder);
+  return conflicts;
 }
 
 function processNextConflict() {
-  while (pendingAdd.factIndex < pendingAdd.facts.length) {
-    const fact = pendingAdd.facts[pendingAdd.factIndex];
-    const conflict = findConflict(fact);
-    if (!conflict) {
-      pendingAdd.factIndex++;
-      continue;
-    }
-    showConflictModal(fact, conflict);
-    return; // ממתינים לתגובת המשתמש
+  const conflicts = getPendingConflicts(pendingAdd.idx);
+  if (conflicts.length === 0) {
+    coalitionOrder.push(pendingAdd.idx);
+    pendingAdd = null;
+    update();
+    return;
   }
-  // אין יותר התנגשויות פתוחות - מוסיפים בפועל
-  coalitionOrder.push(pendingAdd.idx);
-  pendingAdd = null;
-  update();
+  showConflictModal(conflicts[0]);
 }
 
-function showConflictModal(fact, conflict) {
-  const party = parties[pendingAdd.idx];
-  const opponentName = parties[conflict.opponentIdx].name;
-  document.getElementById('cf-title').textContent = `אבל ${party.name} הבטיחה ש${fact.value}`;
-  document.getElementById('cf-sub').textContent = `מוכנים לוותר ל${opponentName}?`;
+const PLURAL_PROMISE_NAMES = new Set([
+  "הליכוד", "בנט&לפיד", "ערבים", "רע\"מ", "חרדים אשכנז", "חרדים מזרח", "הנדל&זליכה",
+]);
+
+const GOOD_ANGEL_SVG = `
+<svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="100" cy="26" rx="26" ry="9" fill="#fff6c9" stroke="#000" stroke-width="5"/>
+  <path d="M75 95 C20 60 5 120 25 150 C45 145 65 120 80 100 Z" fill="#ffffff" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M125 95 C180 60 195 120 175 150 C155 145 135 120 120 100 Z" fill="#ffffff" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M70 205 C55 150 60 110 100 100 C140 110 145 150 130 205 Z" fill="#ffffff" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+  <ellipse cx="100" cy="140" rx="11" ry="15" fill="#ffffff" stroke="#000" stroke-width="4"/>
+  <circle cx="100" cy="65" r="30" fill="#ffffff" stroke="#000" stroke-width="5"/>
+  <path d="M82 62 Q88 68 94 62" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+  <path d="M106 62 Q112 68 118 62" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+  <path d="M91 83 Q100 90 109 83" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="80" cy="75" r="6" fill="#ffb3b3"/>
+  <circle cx="120" cy="75" r="6" fill="#ffb3b3"/>
+</svg>`;
+
+const BAD_ANGEL_SVG = `
+<svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg">
+  <path d="M128 188 C160 194 166 174 150 164 C161 177 140 184 127 176 Z" fill="#d81e2c" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M75 95 C25 70 15 120 35 150 C50 140 65 120 80 100 Z" fill="#d81e2c" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M125 95 C175 70 185 120 165 150 C150 140 135 120 120 100 Z" fill="#d81e2c" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M72 205 C58 150 62 110 100 100 C138 110 142 150 128 205 Z" fill="#d81e2c" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+  <ellipse cx="53" cy="128" rx="12" ry="16" fill="#d81e2c" stroke="#000" stroke-width="4"/>
+  <line x1="150" y1="200" x2="184" y2="68" stroke="#3a2e1a" stroke-width="6" stroke-linecap="round"/>
+  <line x1="177" y1="74" x2="171" y2="48" stroke="#000" stroke-width="5" stroke-linecap="round"/>
+  <line x1="184" y1="68" x2="184" y2="42" stroke="#000" stroke-width="5" stroke-linecap="round"/>
+  <line x1="191" y1="74" x2="197" y2="48" stroke="#000" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="100" cy="65" r="30" fill="#e8303e" stroke="#000" stroke-width="5"/>
+  <line x1="78" y1="54" x2="92" y2="60" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+  <line x1="122" y1="54" x2="108" y2="60" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+  <path d="M78 62 L92 68 L78 72 Z" fill="#000"/>
+  <path d="M122 62 L108 68 L122 72 Z" fill="#000"/>
+  <path d="M85 85 Q100 98 115 85 Q100 90 85 85 Z" fill="#000"/>
+</svg>`;
+
+const GOOD_ANGEL_QUOTES = [
+  "די, תמשיכו!",
+  "איזה מרגש!",
+  "וגר זאב עם כבש!",
+  "מכתת חרבותיי לאתים",
+  "מכין את החמור הלבן",
+  "No more war",
+  "Give peace a chance",
+  "I have a dream",
+  "אם תרצו אין זו אגדה!",
+];
+
+function showAngel(kind) {
+  const el = document.createElement('div');
+  el.className = 'angel-pop';
+  if (kind === 'good') {
+    const quote = GOOD_ANGEL_QUOTES[Math.floor(Math.random() * GOOD_ANGEL_QUOTES.length)];
+    el.innerHTML = `<div class="angel-bubble">${quote}</div>` + GOOD_ANGEL_SVG;
+  } else {
+    el.innerHTML = BAD_ANGEL_SVG;
+  }
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3400);
+}
+
+function showConflictModal(conflict) {
+  const party = parties[pendingAdd.idx];       // המפלגה החדשה - תמיד היא זו ש"הבטיחה"
+  const opponent = parties[conflict.opponentIdx];
+
+  const verb = PLURAL_PROMISE_NAMES.has(party.name) ? 'הבטיחו' : 'הבטיח';
+  document.getElementById('cf-title').textContent = `אבל ${party.name} ${verb}: ${conflict.promiseText}`;
+  document.getElementById('cf-sub').textContent = `מוכנים לוותר ל${opponent.name}?`;
   document.getElementById('overlay').classList.add('show');
 
   document.getElementById('cf-waive').onclick = () => {
     waivers.add(conflict.waiverKey);
     pendingAdd.tempWaivers.push(conflict.waiverKey);
-    pendingAdd.factIndex++;
     document.getElementById('overlay').classList.remove('show');
+    showAngel('good');
     processNextConflict();
   };
   document.getElementById('cf-cancel').onclick = () => {
     pendingAdd.tempWaivers.forEach(k => waivers.delete(k));
     pendingAdd = null;
     document.getElementById('overlay').classList.remove('show');
+    showAngel('bad');
     update();
   };
 }
