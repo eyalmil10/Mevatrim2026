@@ -364,8 +364,12 @@
 
 <button id="infoBtn" title="על המשחק">i</button>
 <div id="infoBubble">
-  עם כל הגושים, החרמות, וההבטחות, הגיע הזמן לוותר קצת.
-  תוכלו להרכיב קואליציה? ולפתור לכולנו את הפלונטר הפוליטי?
+  עם גושים, חרמות והבטחות,<br>
+  ככה לא בונים קואליציה.<br>
+  בואו נראה אתכם פותרים את הפלונטר הפוליטי.<br>
+  שתי מפלגות לא מוכנות לשבת יחד?<br>
+  שלחו להן מלאך. 😇<br><br>
+  <small>* נתוני המנדטים הם ממוצע של כל הסקרים של השבוע האחרון</small>
 </div>
 
 <h1>👼 שלח לי מלאך</h1>
@@ -872,7 +876,7 @@ document.getElementById('res-share').onclick = async () => {
   const namesList = coalitionOrder.map(idx => parties[idx].name);
   const names = namesList.join(', ');
   logEvent('share', namesList);
-  const text = `הרכבתי קואליציה של ${currentTotal()} מנדטים (${names}) עם ${waiverCount} ויתורים במשחק שלח לי מלאך! 👼`;
+  const text = `הרכבתי קואליציה של ${currentTotal()} מנדטים (${names}) במשחק שלח לי מלאך! 👼\nsend-an-angle.com`;
   if (navigator.share) {
     try { await navigator.share({ text }); } catch (e) {}
   } else {
