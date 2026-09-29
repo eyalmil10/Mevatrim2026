@@ -823,7 +823,7 @@ function getTinyMinorityCheck() {
 
 function showResults() {
   gameFinished = true;
-  logEvent('submit');
+  logEvent('submit', coalitionOrder.map(idx => parties[idx].name));
   const total = currentTotal();
 
   let img, msg, quote = '';
